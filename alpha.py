@@ -1,11 +1,11 @@
 import numpy as np
-from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from matplotlib import rcParams
 from PIL import Image
+from matplotlib import rcParams
+from scipy.signal import savgol_filter
 from scipy.stats.stats import pearsonr
-
+from scipy.ndimage.morphology import binary_fill_holes
 
 def render_pop(arr):
     # arr = 1 - (arr/arr.max())
@@ -123,10 +123,18 @@ def add_squares_stochastic(arr, centers, pops, n_samples, p_sample, k_best_sampl
     n_selected = int(p_candidates * len(candidate_freqs_list))
     n_selected = 1 if n_selected < 1 else n_selected
     selection = [tup[1] for tup in candidate_freqs_list][:n_selected]
+    return selection
 
-    new_pops = sorted(pops + get_pops(arr, selection))
-    new_corr = zipf_corr(new_pops)
-    return selection, new_corr, new_pops
+def fill_holes(arr, centers):
+    center_indicator = np.zeros(arr.shape)
+    for c in centers:
+        i, j = c
+        center_indicator[i, j] = 1
+
+    holes_filled = binary_fill_holes(center_indicator)
+    new_holes = holes_filled - center_indicator
+    new_centers = [tuple(r) for r in np.argwhere(new_holes == 1)]
+    return new_centers
 
 def map_centers(arr, centers):
     R = D // 2
@@ -168,21 +176,27 @@ chunk_centers = [(seed[0]+a, seed[1]+b) for a, b in zip([1,1,0,0],[1,0,1,0])] if
 pops = [arr[c] if arr[c]!=0 else 1 for c in chunk_centers]
 corrs = []
 counts = []
-for i in range(50):
+for i in range(150):
     print('Iteration {}...'.format(i))
     most_recent_corr = corrs[-1] if corrs else -1
     # prop = -most_recent_corr - 0.90
     # print('\tprop={}'.format(prop))
     # best_adjacent_centers, new_corr, new_pops = get_best_adjacent_center(arr, chunk_centers, pops, top_k=prop)
-    best_adjacent_centers, new_corr, new_pops = add_squares_stochastic(arr, chunk_centers, pops,
-                                                                        n_samples=10000,
-                                                                        p_sample=0.2,
-                                                                        k_best_samples=1000, 
-                                                                        p_candidates=0.2)
+    new_centers = add_squares_stochastic(arr, chunk_centers, pops,
+                                                             n_samples=10000,
+                                                             p_sample=0.2,
+                                                             k_best_samples=1000, 
+                                                             p_candidates=0.2)
     
-    corrs.append(new_corr)
-    chunk_centers.extend(best_adjacent_centers)
+    chunk_centers.extend(new_centers)
+    
+    holes_filled = fill_holes(arr, chunk_centers)
+    chunk_centers.extend(holes_filled)
+    
+    new_pops = sorted(pops + get_pops(arr, new_centers) + get_pops(arr, holes_filled))
+    new_corr = zipf_corr(new_pops)
     pops = new_pops
+    corrs.append(new_corr)
     counts.append(len(chunk_centers))
 
 N = 7
