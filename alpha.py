@@ -79,6 +79,55 @@ def get_best_adjacent_center(arr, chunk_centers, pops, top_k=1):
     new_corr = zipf_corr(new_pops)
     return top_k_candidates, new_corr, new_pops
 
+def add_squares_stochastic(arr, centers, pops, n_samples, p_sample, k_best_samples, p_candidates):
+    # Get all candidates
+    candidate_centers = get_candidate_centers(arr, chunk_centers)
+
+    # Assess candidates individually
+    cands_and_corrs = []
+    for c in candidate_centers:
+        pops_c = sorted(pops + get_pops(arr, [c]))
+        corr = zipf_corr(pops_c)
+        cands_and_corrs.append((corr, c))
+
+    # Take the top half of individual performers and take random samples of size p_sample from them
+    half = int(len(cands_and_corrs) * 0.5)
+    top_half_candidates = [tup[1] for tup in sorted(cands_and_corrs)[:half]]
+    sample_size = int(p_sample * len(top_half_candidates))
+    sample_size = 2 if sample_size < 2 else sample_size
+    samples = []
+    corrs = []
+    for i in range(n_samples):
+        sample_ids = np.random.choice(list(range(len(top_half_candidates))), sample_size)
+        sample = set([top_half_candidates[i] for i in sample_ids])
+        
+        if sample not in samples:
+            sample_pops = sorted(pops + get_pops(arr, list(sample)))
+            sample_corr = zipf_corr(sample_pops)
+            corrs.append((sample_corr, len(samples)))
+            samples.append(sample)
+
+    # Take the best k samples and count how often certain candidates occur in those samples
+    corrs = sorted(corrs)
+    top_k_sample_ids = [tup[1] for tup in corrs[:k_best_samples]]
+    top_k_samples = [samples[i] for i in top_k_sample_ids]
+
+    candidate_freqs = {}
+    for sample in top_k_samples:
+        for candidate in sample:
+            candidate_freqs[candidate] = candidate_freqs.get(candidate, 0) + 1 
+
+    candidate_freqs_list = [(candidate_freqs[c], c) for c in candidate_freqs]
+    
+    # Take the top p_candidates % of candidates
+    n_selected = int(p_candidates * len(candidate_freqs_list))
+    n_selected = 1 if n_selected < 1 else n_selected
+    selection = [tup[1] for tup in candidate_freqs_list][:n_selected]
+
+    new_pops = sorted(pops + get_pops(arr, selection))
+    new_corr = zipf_corr(new_pops)
+    return selection, new_corr, new_pops
+
 def map_centers(arr, centers):
     R = D // 2
     new_arr = arr.copy()
@@ -112,19 +161,24 @@ arr = np.clip(arr, a_min=0, a_max=arr.max())
 
 D = 1
 # chunk_centers = [get_ij(40, 116)]
-# seed = get_ij(55.8, 37.6, resolution=60) # Moscow
+seed = get_ij(55.8, 37.6, resolution=60) # Moscow
 # seed = get_ij(48.8567, 2.3508, resolution=60) # Paris
-seed = get_ij(40.7127, -74.0059, resolution=60) # NYC
+# seed = get_ij(40.7127, -74.0059, resolution=60) # NYC
 chunk_centers = [(seed[0]+a, seed[1]+b) for a, b in zip([1,1,0,0],[1,0,1,0])] if D == 1 else [seed]
 pops = [arr[c] if arr[c]!=0 else 1 for c in chunk_centers]
 corrs = []
 counts = []
-for i in range(150):
+for i in range(50):
     print('Iteration {}...'.format(i))
     most_recent_corr = corrs[-1] if corrs else -1
-    prop = -most_recent_corr - 0.65
-    print('\tprop={}'.format(prop))
-    best_adjacent_centers, new_corr, new_pops = get_best_adjacent_center(arr, chunk_centers, pops, top_k=prop)
+    # prop = -most_recent_corr - 0.90
+    # print('\tprop={}'.format(prop))
+    # best_adjacent_centers, new_corr, new_pops = get_best_adjacent_center(arr, chunk_centers, pops, top_k=prop)
+    best_adjacent_centers, new_corr, new_pops = add_squares_stochastic(arr, chunk_centers, pops,
+                                                                        n_samples=10000,
+                                                                        p_sample=0.2,
+                                                                        k_best_samples=1000, 
+                                                                        p_candidates=0.2)
     
     corrs.append(new_corr)
     chunk_centers.extend(best_adjacent_centers)
