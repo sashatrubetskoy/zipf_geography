@@ -134,6 +134,9 @@ def fill_holes(arr, centers):
     holes_filled = binary_fill_holes(center_indicator)
     new_holes = holes_filled - center_indicator
     new_centers = [tuple(r) for r in np.argwhere(new_holes == 1)]
+
+    # Make sure you are not filling over empty oceans
+    new_centers = [c for c in new_centers if arr[c[0], c[1]] > 1]
     return new_centers
 
 def map_centers(arr, centers):
@@ -176,7 +179,7 @@ chunk_centers = [(seed[0]+a, seed[1]+b) for a, b in zip([1,1,0,0],[1,0,1,0])] if
 pops = [arr[c] if arr[c]!=0 else 1 for c in chunk_centers]
 corrs = []
 counts = []
-for i in range(150):
+for i in range(300):
     print('Iteration {}...'.format(i))
     most_recent_corr = corrs[-1] if corrs else -1
     # prop = -most_recent_corr - 0.90
@@ -184,9 +187,9 @@ for i in range(150):
     # best_adjacent_centers, new_corr, new_pops = get_best_adjacent_center(arr, chunk_centers, pops, top_k=prop)
     new_centers = add_squares_stochastic(arr, chunk_centers, pops,
                                                              n_samples=10000,
-                                                             p_sample=0.2,
+                                                             p_sample=0.03,
                                                              k_best_samples=1000, 
-                                                             p_candidates=0.2)
+                                                             p_candidates=0.1)
     
     chunk_centers.extend(new_centers)
     
